@@ -1,0 +1,95 @@
+name: Bootstrap self serve migration
+
+on:
+  create:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  issues: write
+  contents: none
+
+jobs:
+  bootstrap-self-serve:
+    if: ${{ !github.event.repository.is_template && (github.event_name != 'issue_comment' || github.event.issue.pull_request == null) }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check for bootstrap command
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const comment = context.payload.comment.body.trim().toLowerCase();
+            if (comment === 'bootstrap.yml') {
+              console.log('Bootstrap command detected');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: 'Bootstrap workflow has been triggered.'
+              });
+            } else {
+              return; // Exit if it's not the bootstrap command
+            }
+
+      - name: Create labels
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const labels = [
+              'migration', 
+              'gei',
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  description: 'Label used by Issue Ops workflow'
+                });
+                console.log(`Created label: ${label}`);
+              } catch (error) {
+                if (error.status === 422) {
+                  console.log(`Label ${label} already exists`);
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+      - name: Disable workflow
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            let parts = process.env.GITHUB_WORKFLOW_REF.split("@")[0].split("/");
+            let filename = parts.pop();
+
+            await github.rest.actions.disableWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: filename
+            });
+            console.log(`Disabled workflow: ${filename}`);
+
+      - name: Update issue status
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'Bootstrap process completed successfully.'
+            });
