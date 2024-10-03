@@ -26,7 +26,7 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const comment = context.payload.comment.body.trim().toLowerCase();
-            if (comment === 'bootstrap.yml') {
+            if (comment === '/bootstrap') {
               console.log('Bootstrap command detected');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -35,10 +35,12 @@ jobs:
                 body: 'Bootstrap workflow has been triggered.'
               });
             } else {
-              return; // Exit if it's not the bootstrap command
+              core.setOutput('skip', 'true');
+              return;
             }
 
       - name: Create labels
+        if: steps.check_command.outputs.skip != 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -67,6 +69,7 @@ jobs:
             }
 
       - name: Disable workflow
+        if: steps.check_command.outputs.skip != 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -82,7 +85,7 @@ jobs:
             console.log(`Disabled workflow: ${filename}`);
 
       - name: Update issue status
-        if: github.event_name == 'issue_comment'
+        if: github.event_name == 'issue_comment' && steps.check_command.outputs.skip != 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
